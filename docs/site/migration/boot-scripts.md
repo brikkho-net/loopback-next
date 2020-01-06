@@ -15,20 +15,18 @@ The LoopBack 3 boot script is mapped to LoopBack 4 observer's `start` function.
 And moreover, besides participating in an application's start phase, an observer
 also allows you to perform logic in the stop phase.
 
-## Migrating Boot Scripts
+## LoopBack 3 Boot Script
 
-### LoopBack 3 Boot Script
+LoopBack 3 supports synchronous and asynchronous boot scripts. And you can
+choose either callback or promise based implementation for asynchronous scripts.
+They all have the first parameter as `server`(some people are used to name it as
+`app`). The callback based asynchronous script has a 2nd parameter `done` as the
+callback function.
 
-LoopBack 3 has different signatures for synchronized and asynchronized boot
-scripts:
-
-They both have the first parameter as `server`(some people are used to name it
-as `app`). A synchronized script only has one parameter, for example, the
-following is a boot script that prints out a datasource's name before
+A typical synchronous boot script that prints out a datasource's name before
 application runs:
 
 ```js
-// a typical synchronized boot script
 // in file `server/boot/print-info.js`
 'use strict';
 
@@ -37,28 +35,48 @@ module.exports = function printInfo(server) {
   // memory datasource in a sample LoopBack application created by CLI, regardless it's
   // an LB3 app or LB4 app
   const db = server.datasources.db;
-  console.log('This is a synchronized script.');
+  console.log('This is a synchronous script.');
   console.log('Your app has a datasource called: ', db.name);
 };
 ```
 
-While a typical asynchronized script has a callback function as the second
-parameter:
+A typical asynchronous boot script that takes in a callback:
 
 ```js
-// a typical asynchronized boot script
-// in file `server/boot/create-sample.js`
+// in file `server/boot/create-sample-cb.js`
 'use strict';
 
 module.exports = function createSample(server, done) {
   // SUPPOSE your application has a Todo model
   const Todo = server.models.Todo;
-  const sample = {title: 'a todo sample', desc: 'Something to do.'};
-  Todo.create(sample)
-    .then(result => {
-      console.log('Sample created as: ', result);
-    })
-    .then(done);
+  const sample = {
+    title: 'a todo sample - cb',
+    desc: 'created by callback based script',
+  };
+  Todo.create(sample, (err, result) => {
+    if (err) return done(err);
+    console.log('Sample created as: ', result);
+    done();
+  });
+};
+```
+
+A typical asynchronous boot script that returns a promise:
+
+```js
+// in file `server/boot/create-sample-promise.js`
+'use strict';
+
+module.exports = function createSample(server) {
+  // SUPPOSE your application has a Todo model
+  const Todo = server.models.Note;
+  const sample = {
+    title: 'a todo sample - promise',
+    desc: 'created by promise based script',
+  };
+  return Todo.create(sample).then(result => {
+    console.log('Sample created as: ', result);
+  });
 };
 ```
 
@@ -68,7 +86,7 @@ ECMAScript features including
 difference any more, the `start` function in the observer is always an `async`
 function.
 
-### Migrating to LoopBack 4 Observer
+## Migrating to LoopBack 4 Observer
 
 To perform the same logic defined in a LoopBack 3 boot script, you should create
 a corresponding observer in your LoopBack 4 application.
@@ -82,10 +100,10 @@ _Note: We highly recommend you learn about
 first before reading the following guide._
 
 Take the two scripts(`server/boot/print-info.js` and
-`server/boot/create-sample.js`) above as examples, let's first migrate
+`server/boot/create-sample-promise.js`) above as examples, let's first migrate
 `server/boot/print-info.js` to your LoopBack 4 application.
 
-#### Creating Observer
+### Creating Observer
 
 Run command `lb4 observer` to create an observer called `printInfo`:
 
@@ -105,7 +123,7 @@ which implements `LifeCycleObserver` and has `start` and `stop` functions. The
 `start` function is where you should copy over the content of LB3's `printInfo`
 function.
 
-#### Injecting Application
+### Injecting Application
 
 The LoopBack 3 boot script takes in `server` as its first parameter, which is
 essentially the `application` injected using key
@@ -119,11 +137,12 @@ export class PrintInfoObserver implements LifeCycleObserver {
   ) {
     // ... other class members
   }
+}
 ```
 
 Now within the class `PrintInfoObserver` you have access to the application.
 
-#### Migrating Artifacts
+### Migrating Artifacts
 
 A boot script usually accesses or manipulates an application's artifacts like
 models, datasources, etc... So when moving its content to the `start` function,
@@ -132,8 +151,8 @@ make sure you edit the code to retrieve those artifacts in LoopBack 4's way.
 For the print info script, since it retrieves a datasource's info, you need to
 **MIGRATE** the LoopBack datasource `db` to your LoopBack 4 application. The
 steps are well documented on page [migration/datasources.md](./datasources.md).
-And in the `start` function, **EDIT CODE** to retrieve the datasource using
-`this.app.getSync('datasources.db')`:
+And in the `start` function, **EDIT CODE** to inject the datasource using
+`@inject('datasources.db') private ds: juggler.DataSource`:
 
 _The code snippet is the complete observer file, the LB3 boot script logic is
 only in the `start` function_
@@ -153,10 +172,13 @@ import {juggler} from '@loopback/repository';
  * This class will be bound to the application as a `LifeCycleObserver` during
  * `boot`
  */
-@lifeCycleObserver('')
+@lifeCycleObserver()
 export class PrintInfoObserver implements LifeCycleObserver {
   constructor(
+    // inject `app` if you need access to other artifacts by `await this.app.get()`
     @inject(CoreBindings.APPLICATION_INSTANCE) private app: Application,
+    // inject a datasource with key `datasources.${dsName}`
+    @inject('datasources.db') private ds: juggler.DataSource,
   ) {}
 
   /**
@@ -164,10 +186,8 @@ export class PrintInfoObserver implements LifeCycleObserver {
    */
   async start(): Promise<void> {
     // Add your logic for start
-    console.log('This is a migrated synchronized boot script.');
-
-    const db: juggler.DataSource = this.app.getSync('datasources.db');
-    console.log(`Your app has a datasource called: ${db.name}`);
+    console.log('This is a migrated synchronous boot script.');
+    console.log(`Your app has a datasource called: ${this.ds.name}`);
   }
 
   /**
@@ -180,7 +200,7 @@ export class PrintInfoObserver implements LifeCycleObserver {
 }
 ```
 
-For the other script `server/boot/create-sample.js`, the creation of its
+For the other script `server/boot/create-sample-promise.js`, the creation of its
 corresponding observer is exactly the same as `server/boot/print-info.js`. To
 avoid duplicate content, the steps are omitted here. The script retrieves
 LoopBack 3 model `Todo` and creates a sample through `Todo.create()`. While in
@@ -210,10 +230,15 @@ import {TodoRepository} from '../repositories';
  * This class will be bound to the application as a `LifeCycleObserver` during
  * `boot`
  */
-@lifeCycleObserver('')
+@lifeCycleObserver()
 export class CreateSampleObserver implements LifeCycleObserver {
   constructor(
+    // inject `app` if you need access to other artifacts by `await this.app.get()`
     @inject(CoreBindings.APPLICATION_INSTANCE) private app: Application,
+    // inject a repository with key `repositories.${repoName}`
+    // or with the shortcut injector:
+    // `@repository(TodoRepository) private todoRepo: TodoRepository`
+    @inject('repositories.TodoRepository') private todoRepo: TodoRepository,
   ) {}
 
   /**
@@ -221,12 +246,8 @@ export class CreateSampleObserver implements LifeCycleObserver {
    */
   async start(): Promise<void> {
     // Add your logic for start
-    console.log('This is a migrated asynchronized boot script');
+    console.log('This is a migrated asynchronous boot script');
 
-    // Retrieve the repository by key 'repositories.TodoRepository'
-    const TodoRepo: TodoRepository = this.app.getSync(
-      'repositories.TodoRepository',
-    );
     const sample = {title: 'a todo sample', desc: 'Something to do.'};
     // Create the sample by calling TodoRepo.create()
     const result = await TodoRepo.create(sample);
@@ -243,7 +264,15 @@ export class CreateSampleObserver implements LifeCycleObserver {
 }
 ```
 
-### Predefined LoopBack 3 Boot Scripts
+### Setting Order for Migrated Boot Scripts
+
+In LoopBack 3, boot scripts are loaded according to the script file'
+name(alphabetically). LoopBack 4 observer provides an advanced way to control
+the order of scripts by specifying and setting group names. The tutorial is well
+documented in the section
+[Notify life cycle observers of start/stop related events by order](../Life-cycle.md#notify-life-cycle-observers-of-startstop-related-events-by-order).
+
+## Predefined LoopBack 3 Boot Scripts
 
 LoopBack 3 application has two predefined boot scripts: `/server/boot/root.js`
 and `/server/boot/authentication.js`. Please do not create corresponding

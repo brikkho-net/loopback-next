@@ -12,10 +12,13 @@ import {juggler} from '@loopback/repository';
  * This class will be bound to the application as a `LifeCycleObserver` during
  * `boot`
  */
-@lifeCycleObserver('')
+@lifeCycleObserver()
 export class PrintInfoObserver implements LifeCycleObserver {
   constructor(
+    // inject app if you need access to other artifacts by `await this.app.get()`
     @inject(CoreBindings.APPLICATION_INSTANCE) private app: Application,
+    // inject a datasource with key `datasources.${dsName}`
+    @inject('datasources.db') private ds: juggler.DataSource,
   ) {}
 
   /**
@@ -24,12 +27,10 @@ export class PrintInfoObserver implements LifeCycleObserver {
   async start(): Promise<void> {
     // Add your logic for start
     console.log(
-      'This is a migrated synchronized boot script.' +
+      'This is a migrated synchronous boot script. ' +
         "Now it maps to PrintInfoObserver's start function",
     );
-
-    const db: juggler.DataSource = this.app.getSync('datasources.db');
-    console.log(`Your app has a datasource called: ${db.name}`);
+    console.log(`Your app has a datasource called: ${this.ds.name}`);
   }
 
   /**

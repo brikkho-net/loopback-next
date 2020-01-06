@@ -12,10 +12,15 @@ import {TodoRepository} from '../repositories';
  * This class will be bound to the application as a `LifeCycleObserver` during
  * `boot`
  */
-@lifeCycleObserver('')
+@lifeCycleObserver()
 export class CreateSampleObserver implements LifeCycleObserver {
   constructor(
+    // inject app if you need access to other artifacts by `await this.app.get()`
     @inject(CoreBindings.APPLICATION_INSTANCE) private app: Application,
+    // inject a repository with key `repositories.${repoName}`
+    // or with the shortcut injector:
+    // `@repository(TodoRepository) private todoRepo: TodoRepository`
+    @inject('repositories.TodoRepository') private todoRepo: TodoRepository,
   ) {}
 
   /**
@@ -24,15 +29,12 @@ export class CreateSampleObserver implements LifeCycleObserver {
   async start(): Promise<void> {
     // Add your logic for start
     console.log(
-      'This is a migrated asynchronized boot script.' +
+      'This is a migrated asynchronous boot script. ' +
         "Now it maps to CreateSampleObserver's start function",
     );
 
-    const Todo: TodoRepository = this.app.getSync(
-      'repositories.TodoRepository',
-    );
     const sample = {title: 'a todo sample', desc: 'Something to do.'};
-    const result = await Todo.create(sample);
+    const result = await this.todoRepo.create(sample);
     console.log(`Sample created as: ${result}`);
   }
 
